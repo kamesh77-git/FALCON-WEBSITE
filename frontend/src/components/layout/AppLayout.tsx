@@ -9,7 +9,7 @@ export default function AppLayout() {
   const { pathname } = useLocation()
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-blue-50/40">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="lg:ml-64 flex flex-col min-h-screen">
         <Navbar onMenuClick={() => setSidebarOpen(true)} />

@@ -11,7 +11,7 @@ interface StatsCardProps {
 
 export default function StatsCard({ title, value, icon, iconBg = 'bg-primary-50', subtitle, trend }: StatsCardProps) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-card hover:shadow-card-md transition-shadow duration-200 p-5 flex items-start gap-4">
+    <div className="bg-white rounded-2xl border border-blue-100 shadow-card hover:shadow-card-md transition-shadow duration-200 p-5 flex items-start gap-4">
       <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
         {icon}
       </div>

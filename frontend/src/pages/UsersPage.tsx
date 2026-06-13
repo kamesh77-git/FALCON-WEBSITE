@@ -2,31 +2,26 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Edit2, Shield, UserX, Users } from 'lucide-react'
+import {
+  Plus, Edit2, Shield, UserX, Users, Crown, UserCog,
+  Search, ChevronRight
+} from 'lucide-react'
 import { getAllUsers, createUser, updateUser, updateUserRole, deactivateUser } from '@/api/users'
-import Table from '@/components/ui/Table'
-import type { Column } from '@/components/ui/Table'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
-import { RoleBadge } from '@/components/ui/Badge'
-import { getRoleLabel, formatDate, getInitials } from '@/utils'
+import { getRoleLabel, getInitials, formatDate } from '@/utils'
 import { useToast } from '@/context/ToastContext'
 import type { RoleName, UserResponse } from '@/types'
+import UserDetailPanel from '@/components/users/UserDetailPanel'
 
 const roleOptions = [
   { value: 'ROLE_ADMIN',       label: 'Admin' },
   { value: 'ROLE_SUPER_ADMIN', label: 'Super Admin' },
   { value: 'ROLE_CEO_ADMIN',   label: 'CEO Admin' },
 ]
-
-const roleBadgeColors: Record<RoleName, string> = {
-  ROLE_ADMIN:       'bg-gray-100 text-gray-700 border border-gray-200',
-  ROLE_SUPER_ADMIN: 'bg-blue-50 text-blue-700 border border-blue-100',
-  ROLE_CEO_ADMIN:   'bg-purple-50 text-purple-700 border border-purple-100',
-}
 
 const createSchema = z.object({
   name:     z.string().min(1, 'Name is required'),
@@ -42,16 +37,66 @@ const editSchema = z.object({
 type CreateForm = z.infer<typeof createSchema>
 type EditForm   = z.infer<typeof editSchema>
 
+// ─── Role display helpers ─────────────────────────────────────────────────────
+
+const ROLE_STYLES: Record<RoleName, { badge: string; icon: typeof Shield; dot: string }> = {
+  ROLE_ADMIN:       { badge: 'bg-slate-100 text-slate-700 border border-slate-200', icon: UserCog, dot: 'bg-slate-400' },
+  ROLE_SUPER_ADMIN: { badge: 'bg-blue-50 text-blue-700 border border-blue-100',   icon: Shield,   dot: 'bg-blue-500' },
+  ROLE_CEO_ADMIN:   { badge: 'bg-violet-50 text-violet-700 border border-violet-100', icon: Crown, dot: 'bg-violet-500' },
+}
+
+// ─── Summary cards data ───────────────────────────────────────────────────────
+
+function RoleSummaryCard({
+  role, count, total
+}: { role: RoleName; count: number; total: number }) {
+  const s = ROLE_STYLES[role]
+  const Icon = s.icon
+  const label = getRoleLabel(role)
+  const pct = total ? Math.round((count / total) * 100) : 0
+
+  const solidColors: Record<RoleName, { icon: string; bar: string }> = {
+    ROLE_ADMIN:       { icon: 'bg-slate-500',  bar: 'bg-slate-400'  },
+    ROLE_SUPER_ADMIN: { icon: 'bg-blue-600',   bar: 'bg-blue-500'   },
+    ROLE_CEO_ADMIN:   { icon: 'bg-violet-600', bar: 'bg-violet-500' },
+  }
+  const colors = solidColors[role]
+
+  return (
+    <div className="bg-white rounded-2xl border border-blue-100 shadow-card hover:shadow-card-md transition-all duration-200 p-5 group">
+      <div className="flex items-start justify-between mb-3">
+        <div className={`w-10 h-10 rounded-xl ${colors.icon} flex items-center justify-center shadow-button`}>
+          <Icon size={18} className="text-white" />
+        </div>
+        <span className="text-2xl font-bold text-gray-900">{count}</span>
+      </div>
+      <p className="text-sm font-semibold text-gray-700">{label}</p>
+      <p className="text-xs text-gray-400 mt-0.5">{pct}% of team</p>
+      <div className="mt-3 h-1 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full ${colors.bar} rounded-full transition-all duration-500`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function UsersPage() {
-  const { showToast }   = useToast()
-  const [users, setUsers]               = useState<UserResponse[]>([])
-  const [isLoading, setIsLoading]       = useState(true)
-  const [showCreate, setShowCreate]     = useState(false)
-  const [editUser, setEditUser]         = useState<UserResponse | null>(null)
-  const [roleUser, setRoleUser]         = useState<UserResponse | null>(null)
+  const { showToast } = useToast()
+  const [users, setUsers]                     = useState<UserResponse[]>([])
+  const [filtered, setFiltered]               = useState<UserResponse[]>([])
+  const [search, setSearch]                   = useState('')
+  const [isLoading, setIsLoading]             = useState(true)
+  const [showCreate, setShowCreate]           = useState(false)
+  const [editUser, setEditUser]               = useState<UserResponse | null>(null)
+  const [roleUser, setRoleUser]               = useState<UserResponse | null>(null)
   const [deactivateTarget, setDeactivateTarget] = useState<UserResponse | null>(null)
-  const [selectedRole, setSelectedRole] = useState<RoleName>('ROLE_ADMIN')
-  const [isActing, setIsActing]         = useState(false)
+  const [selectedRole, setSelectedRole]       = useState<RoleName>('ROLE_ADMIN')
+  const [isActing, setIsActing]               = useState(false)
+  const [detailUser, setDetailUser]           = useState<UserResponse | null>(null)
 
   const createForm = useForm<CreateForm>({ resolver: zodResolver(createSchema) })
   const editForm   = useForm<EditForm>({ resolver: zodResolver(editSchema) })
@@ -60,11 +105,26 @@ export default function UsersPage() {
     setIsLoading(true)
     try {
       const res = await getAllUsers()
-      setUsers(res.data.data)
+      const data = res.data.data
+      setUsers(data)
+      setFiltered(data)
     } finally { setIsLoading(false) }
   }
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    const q = search.toLowerCase()
+    setFiltered(
+      q
+        ? users.filter(u =>
+            u.name.toLowerCase().includes(q) ||
+            u.email.toLowerCase().includes(q) ||
+            u.roles.some(r => getRoleLabel(r).toLowerCase().includes(q))
+          )
+        : users
+    )
+  }, [search, users])
 
   const handleCreate = async (data: CreateForm) => {
     try {
@@ -113,83 +173,164 @@ export default function UsersPage() {
     finally { setIsActing(false) }
   }
 
-  const ActionBtn = ({ title, onClick, color }: { title: string; onClick: () => void; color: string }) => (
-    <button
-      onClick={e => { e.stopPropagation(); onClick() }}
-      title={title}
-      aria-label={title}
-      className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors duration-150 cursor-pointer ${color}`}
-    >
-      {title === 'Edit'        && <Edit2  size={13} />}
-      {title === 'Change Role' && <Shield size={13} />}
-      {title === 'Deactivate'  && <UserX  size={13} />}
-    </button>
-  )
-
-  const columns: Column<UserResponse>[] = [
-    {
-      key: 'name', header: 'User',
-      render: r => (
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center flex-shrink-0 shadow-button">
-            <span className="text-white text-xs font-bold">{getInitials(r.name)}</span>
-          </div>
-          <div>
-            <p className="text-sm font-bold text-gray-900 leading-none">{r.name}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{r.email}</p>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: 'roles', header: 'Role',
-      render: r => (
-        <div className="flex gap-1 flex-wrap">
-          {r.roles.map(role => (
-            <RoleBadge key={role} label={getRoleLabel(role)} className={roleBadgeColors[role]} />
-          ))}
-        </div>
-      ),
-    },
-    {
-      key: 'isActive', header: 'Status',
-      render: r => (
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold
-          ${r.isActive ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${r.isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
-          {r.isActive ? 'Active' : 'Inactive'}
-        </span>
-      ),
-    },
-    { key: 'createdAt', header: 'Joined', render: r => <span className="text-gray-500 text-xs">{formatDate(r.createdAt)}</span> },
-    {
-      key: 'actions', header: 'Actions', className: 'w-28',
-      render: r => (
-        <div className="flex items-center gap-0.5">
-          <ActionBtn title="Edit" onClick={() => { setEditUser(r); editForm.reset({ name: r.name, email: r.email }) }} color="text-gray-400 hover:text-primary-600 hover:bg-primary-50" />
-          <ActionBtn title="Change Role" onClick={() => { setRoleUser(r); setSelectedRole(r.roles[0]) }} color="text-gray-400 hover:text-blue-600 hover:bg-blue-50" />
-          {r.isActive && (
-            <ActionBtn title="Deactivate" onClick={() => setDeactivateTarget(r)} color="text-gray-400 hover:text-red-600 hover:bg-red-50" />
-          )}
-        </div>
-      ),
-    },
-  ]
+  const adminCount     = users.filter(u => u.roles.includes('ROLE_ADMIN') && !u.roles.includes('ROLE_SUPER_ADMIN') && !u.roles.includes('ROLE_CEO_ADMIN')).length
+  const superCount     = users.filter(u => u.roles.includes('ROLE_SUPER_ADMIN')).length
+  const ceoCount       = users.filter(u => u.roles.includes('ROLE_CEO_ADMIN')).length
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-400 font-medium">
-          {isLoading ? 'Loading…' : `${users.length} member${users.length !== 1 ? 's' : ''}`}
-        </p>
-        <Button leftIcon={<Plus size={15} />} onClick={() => setShowCreate(true)}>Add User</Button>
+    <div className="space-y-6">
+
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Team Members</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {isLoading ? 'Loading…' : `${users.length} member${users.length !== 1 ? 's' : ''} across all roles`}
+          </p>
+        </div>
+        <Button leftIcon={<Plus size={15} />} onClick={() => setShowCreate(true)}>
+          Add Member
+        </Button>
       </div>
 
-      <Table columns={columns} data={users} isLoading={isLoading}
-        emptyMessage="No users yet" emptyIcon={<Users size={36} />} />
+      {/* ── Role summary cards ── */}
+      {!isLoading && users.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <RoleSummaryCard role="ROLE_ADMIN"       count={adminCount} total={users.length} />
+          <RoleSummaryCard role="ROLE_SUPER_ADMIN" count={superCount} total={users.length} />
+          <RoleSummaryCard role="ROLE_CEO_ADMIN"   count={ceoCount}   total={users.length} />
+        </div>
+      )}
 
-      {/* Create modal */}
-      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Add New User">
+      {/* ── Table card ── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-card">
+        {/* Table header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50 gap-3">
+          <div className="relative flex-1 max-w-xs">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search members…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-100 rounded-xl text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-300 transition-colors"
+            />
+          </div>
+          <p className="text-xs text-gray-400 font-medium flex-shrink-0">
+            {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+
+        {/* Table */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16 text-gray-300">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+              <p className="text-sm text-gray-400">Loading members…</p>
+            </div>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center">
+              <Users size={24} className="text-gray-300" />
+            </div>
+            <p className="text-sm text-gray-400">{search ? 'No members match your search' : 'No members yet'}</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {filtered.map(user => {
+              const primaryRole = user.roles[0] ?? 'ROLE_ADMIN'
+              const rs = ROLE_STYLES[primaryRole]
+              const RIcon = rs.icon
+              return (
+                <button
+                  key={user.id}
+                  onClick={() => setDetailUser(user)}
+                  className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-blue-50/40 transition-colors duration-100 text-left group cursor-pointer"
+                >
+                  {/* Avatar */}
+                  <div className="w-9 h-9 rounded-full bg-primary-600 flex items-center justify-center flex-shrink-0 shadow-button">
+                    <span className="text-white text-xs font-bold">{getInitials(user.name)}</span>
+                  </div>
+
+                  {/* Name + email */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 leading-tight truncate">{user.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5 truncate">{user.email}</p>
+                  </div>
+
+                  {/* Role badge */}
+                  <div className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold flex-shrink-0 ${rs.badge}`}>
+                    <RIcon size={11} />
+                    {getRoleLabel(primaryRole)}
+                  </div>
+
+                  {/* Status dot */}
+                  <div className={`hidden md:flex items-center gap-1.5 flex-shrink-0 ${user.isActive ? 'text-emerald-600' : 'text-gray-400'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${user.isActive ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                    <span className="text-xs font-medium">{user.isActive ? 'Active' : 'Inactive'}</span>
+                  </div>
+
+                  {/* Joined */}
+                  <span className="hidden lg:block text-xs text-gray-400 flex-shrink-0 w-24 text-right">
+                    {formatDate(user.createdAt)}
+                  </span>
+
+                  {/* Quick actions */}
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={e => { e.stopPropagation(); setEditUser(user); editForm.reset({ name: user.name, email: user.email }) }}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); setEditUser(user); editForm.reset({ name: user.name, email: user.email }) }}}
+                      title="Edit"
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    >
+                      <Edit2 size={12} />
+                    </span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={e => { e.stopPropagation(); setRoleUser(user); setSelectedRole(user.roles[0]) }}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); setRoleUser(user); setSelectedRole(user.roles[0]) }}}
+                      title="Change Role"
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-violet-600 hover:bg-violet-50 transition-colors"
+                    >
+                      <Shield size={12} />
+                    </span>
+                    {user.isActive && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={e => { e.stopPropagation(); setDeactivateTarget(user) }}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.stopPropagation(); setDeactivateTarget(user) }}}
+                        title="Deactivate"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <UserX size={12} />
+                      </span>
+                    )}
+                  </div>
+
+                  <ChevronRight size={14} className="text-gray-300 group-hover:text-blue-400 transition-colors flex-shrink-0" />
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── User detail panel ── */}
+      <UserDetailPanel
+        user={detailUser}
+        onClose={() => setDetailUser(null)}
+        onEdit={u => { setEditUser(u); editForm.reset({ name: u.name, email: u.email }) }}
+        onChangeRole={u => { setRoleUser(u); setSelectedRole(u.roles[0]) }}
+        onDeactivate={u => setDeactivateTarget(u)}
+      />
+
+      {/* ── Create modal ── */}
+      <Modal isOpen={showCreate} onClose={() => setShowCreate(false)} title="Add New Member">
         <form onSubmit={createForm.handleSubmit(handleCreate)} className="p-6 space-y-4">
           <Input label="Full Name" required error={createForm.formState.errors.name?.message} {...createForm.register('name')} placeholder="John Doe" />
           <Input label="Email" type="email" required error={createForm.formState.errors.email?.message} {...createForm.register('email')} placeholder="john@falcons.com" />
@@ -197,13 +338,13 @@ export default function UsersPage() {
           <Select label="Role" required options={roleOptions} error={createForm.formState.errors.role?.message} {...createForm.register('role')} />
           <div className="flex justify-end gap-2.5 pt-2">
             <Button variant="secondary" size="sm" type="button" onClick={() => setShowCreate(false)}>Cancel</Button>
-            <Button type="submit" size="sm" isLoading={createForm.formState.isSubmitting}>Create User</Button>
+            <Button type="submit" size="sm" isLoading={createForm.formState.isSubmitting}>Create Member</Button>
           </div>
         </form>
       </Modal>
 
-      {/* Edit modal */}
-      <Modal isOpen={!!editUser} onClose={() => setEditUser(null)} title="Edit User" size="sm">
+      {/* ── Edit modal ── */}
+      <Modal isOpen={!!editUser} onClose={() => setEditUser(null)} title="Edit Member" size="sm">
         <form onSubmit={editForm.handleSubmit(handleEdit)} className="p-6 space-y-4">
           <Input label="Full Name" required error={editForm.formState.errors.name?.message} {...editForm.register('name')} />
           <Input label="Email" type="email" required error={editForm.formState.errors.email?.message} {...editForm.register('email')} />
@@ -214,10 +355,20 @@ export default function UsersPage() {
         </form>
       </Modal>
 
-      {/* Role modal */}
+      {/* ── Change role modal ── */}
       <Modal isOpen={!!roleUser} onClose={() => setRoleUser(null)} title="Change Role" size="sm">
         <div className="p-6 space-y-4">
-          <p className="text-sm text-gray-500">Changing role for <span className="font-bold text-gray-900">{roleUser?.name}</span></p>
+          {roleUser && (
+            <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+              <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center">
+                <span className="text-white text-xs font-bold">{getInitials(roleUser.name)}</span>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">{roleUser.name}</p>
+                <p className="text-xs text-gray-400">{roleUser.email}</p>
+              </div>
+            </div>
+          )}
           <Select
             label="New Role"
             options={roleOptions}
@@ -231,8 +382,9 @@ export default function UsersPage() {
         </div>
       </Modal>
 
+      {/* ── Deactivate confirm ── */}
       <ConfirmDialog
-        isOpen={!!deactivateTarget} title="Deactivate User"
+        isOpen={!!deactivateTarget} title="Deactivate Member"
         message={`Deactivate ${deactivateTarget?.name}? They will immediately lose access to the system.`}
         confirmLabel="Deactivate" isDestructive isLoading={isActing}
         onConfirm={handleDeactivate} onCancel={() => setDeactivateTarget(null)}

@@ -122,7 +122,7 @@ export default function DashboardPage() {
       )}
 
       {/* Recent shipments */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-card">
+      <div className="bg-white rounded-2xl border border-blue-100 shadow-card">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
           <div>
             <h3 className="text-sm font-bold text-gray-900">Recent Shipments</h3>

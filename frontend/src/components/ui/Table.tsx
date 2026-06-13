@@ -35,10 +35,10 @@ export default function Table<T extends object>({
   columns, data, isLoading, onRowClick, emptyMessage = 'No records found', emptyIcon,
 }: TableProps<T>) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-gray-100 shadow-card bg-white">
+    <div className="overflow-x-auto rounded-2xl border border-blue-100 shadow-card bg-white">
       <table className="w-full min-w-max text-sm">
         <thead>
-          <tr className="bg-navy border-b border-navy-800">
+          <tr className="bg-blue-50 border-b border-blue-100">
             {columns.map(col => (
               <th
                 key={col.key}

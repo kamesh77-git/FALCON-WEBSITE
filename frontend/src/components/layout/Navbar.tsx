@@ -56,7 +56,7 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
               <p className="text-sm font-semibold text-gray-900 leading-none">{user.name}</p>
               <p className="text-[11px] text-gray-400 mt-0.5">{user.email}</p>
             </div>
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center flex-shrink-0 shadow-button cursor-pointer">
+            <div className="w-9 h-9 rounded-full bg-primary-600 flex items-center justify-center flex-shrink-0 shadow-button cursor-pointer">
               <span className="text-white text-xs font-bold">{getInitials(user.name)}</span>
             </div>
           </div>
