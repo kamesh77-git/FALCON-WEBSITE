@@ -23,3 +23,19 @@ tmp/
 ### OS Files ###
 .DS_Store
 Thumbs.db
+
+### Java ###
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+
+### Spring Boot ###
+application-local.properties
+application-local.yml
+spring-shell.log
+
+### Claude Code ###
+.claude/
